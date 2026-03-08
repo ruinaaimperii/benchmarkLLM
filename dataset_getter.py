@@ -12,13 +12,8 @@ import json
 import time
 import glob
 from google import genai
-#from google.api_core import retry
-# AIzaSyDkNK032fI40kXNlkWa4TfOFELT-QHodic
-# AIzaSyAl9sZyyvujsv7okt6au0YcUpzp57E3oPI
-# AIzaSyAAlRPcoMD10sabejawB6b9iwW-e2go4ZA
-# AIzaSyC0gKK6IKsn_tYE9T-ENKDHRQHZp63VhlI
 
-API_KEY = "AIzaSyC0gKK6IKsn_tYE9T-ENKDHRQHZp63VhlI"
+API_KEY = ""
 
 INPUT_DIR = '/content/drive/MyDrive/articles_dump/'
 OUTPUT_FILE = '/content/drive/MyDrive/dataset_benchLLM_7.json'
