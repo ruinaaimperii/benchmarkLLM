@@ -144,7 +144,7 @@ import time
 from google import genai
 
 
-API_KEY = "AIzaSyAl9sZyyvujsv7okt6au0YcUpzp57E3oPI"
+API_KEY = ""
 INPUT_FILE = "/content/drive/MyDrive/llm_outputs/answers_Qwen_Qwen3.5-4B.json"
 OUTPUT_FILE ="/content/drive/MyDrive/llm_judged/" + "judged_" + "Qwen_Qwen3.5-4B.json"
 
