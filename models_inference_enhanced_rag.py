@@ -117,7 +117,7 @@ def generate_answer(tokenizer, model, focus_context, question):
         outputs = model.generate(
             **inputs,
             max_new_tokens=512,
-            temperature=0.1,
+            temperature=0.2,
             do_sample=True,
             repetition_penalty=1.1,
             pad_token_id=tokenizer.eos_token_id
@@ -204,7 +204,7 @@ import time
 from google import genai
 
 
-API_KEY = "AIzaSyDXZE5SRBJY89B8cGSsTMLJ1elSwuuPEF4"
+API_KEY = ""
 INPUT_FILE = f"/content/drive/MyDrive/llm_outputs/answers_{safe_model_name}_Enhanced_RAG.json"
 OUTPUT_FILE =f"/content/drive/MyDrive/llm_judged/judged_{safe_model_name}_Enhanced_RAG.json"
 
