@@ -179,7 +179,7 @@ import time
 from google import genai
 
 
-API_KEY = "AIzaSyDXZE5SRBJY89B8cGSsTMLJ1elSwuuPEF4"
+API_KEY = ""
 INPUT_FILE = f"/content/drive/MyDrive/llm_outputs/answers_{safe_model_name}_RAG_Temp_0_2.json"
 OUTPUT_FILE =f"/content/drive/MyDrive/llm_judged/judged_{safe_model_name}_RAG_Temp_0_2.json"
 
