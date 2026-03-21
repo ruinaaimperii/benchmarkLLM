@@ -9,12 +9,13 @@ Original file is located at
 ## Получаем ответы от LLM
 """
 
-!pip install -U -q transformers sentence-transformers
+!pip install -U -q transformers sentence-transformers google
 
-DATASET_FILE = "/content/drive/MyDrive/dataset_FULL.json"
+DATASET_FILE = "/content/drive/MyDrive/dataset_SMALL.json"
 MODEL_ID = "Qwen/Qwen3.5-4b"
 safe_model_name = MODEL_ID.replace("/", "_")
-OUTPUT_FILE = f"/content/drive/MyDrive/llm_outputs/answers_{safe_model_name}_Enhanced_RAG.json"
+OUTPUT_FILE = "/content/drive/MyDrive/llm_outputs/" + \
+              f"answers_{safe_model_name}Enhanced_RAG_Temp_0_2.json"
 
 import os
 import json
@@ -40,19 +41,30 @@ def load_models(model_id):
     )
 
     print(f"Загрузка Embedding-модели {EMBEDDER_MODEL}...")
-    embedder = SentenceTransformer(EMBEDDER_MODEL, device="cuda" if torch.cuda.is_available() else "cpu")
+    embedder = SentenceTransformer(EMBEDDER_MODEL, device="cuda"
+                                   if torch.cuda.is_available() else "cpu")
 
     return tokenizer, llm, embedder
 
 def expand_query(tokenizer, model, question):
-    """LLM генерирует синонимы для улучшения поиска"""
-    prompt = f"Напиши 5 ключевых слов или коротких фраз для поиска информации в базе данных по следующему вопросу. Выведи только слова через запятую.\nВопрос: {question}\nКлючевые слова:"
+
+    prompt = f"""
+    Напиши 5 ключевых слов или коротких фраз для поиска информации
+    в базе данных по следующему вопросу.
+    Выведи только слова через запятую.\nВопрос: {question}\nКлючевые слова:"""
+
     inputs = tokenizer(prompt, return_tensors="pt").to(model.device)
 
     with torch.no_grad():
-        outputs = model.generate(**inputs, max_new_tokens=25, temperature=0.3, pad_token_id=tokenizer.eos_token_id)
+        outputs = model.generate(
+            **inputs,
+            max_new_tokens=25,
+            temperature=0.3,
+            pad_token_id=tokenizer.eos_token_id)
 
-    raw = tokenizer.decode(outputs[0][inputs['input_ids'].shape[1]:], skip_special_tokens=True)
+    raw = tokenizer.decode(
+        outputs[0][inputs['input_ids'].shape[1]:],
+        skip_special_tokens=True)
 
     keywords = re.sub(r'<think>.*?</think>', '', raw, flags=re.DOTALL).strip()
     return f"{question} {keywords}"
@@ -69,47 +81,75 @@ class FocusModeRetriever:
     def retrieve(self, query, top_chunks=5, top_sentences=8):
         chunk_size = 1200
         overlap = 300
-        chunks = [self.text[i : i + chunk_size] for i in range(0, len(self.text), chunk_size - overlap)]
+        chunks = [self.text[i : i + chunk_size]
+                  for i in range(0, len(self.text), chunk_size - overlap)]
 
-        chunk_embeddings = self.embedder.encode([f"passage: {c}" for c in chunks], convert_to_tensor=True, show_progress_bar=False)
-        query_emb = self.embedder.encode(f"query: {query}", convert_to_tensor=True, show_progress_bar=False)
+        chunk_embeddings = self.embedder.encode(
+            [f"passage: {c}" for c in chunks],
+            convert_to_tensor=True,
+            show_progress_bar=False)
+
+        query_emb = self.embedder.encode(
+            f"query: {query}",
+            convert_to_tensor=True,
+            show_progress_bar=False)
 
         cos_scores = util.cos_sim(query_emb, chunk_embeddings)[0]
-        top_chunk_idx = torch.topk(cos_scores, k=min(top_chunks, len(chunks))).indices
+        top_chunk_idx = torch.topk(
+            cos_scores, k=min(top_chunks, len(chunks))).indices
+
         best_chunks_text = " ".join([chunks[idx] for idx in top_chunk_idx])
 
         sentences = self._split_into_sentences(best_chunks_text)
         if not sentences:
             return ""
 
-        sent_embeddings = self.embedder.encode([f"passage: {s}" for s in sentences], convert_to_tensor=True, show_progress_bar=False)
+        sent_embeddings = self.embedder.encode(
+            [f"passage: {s}" for s in sentences],
+            convert_to_tensor=True,
+            show_progress_bar=False)
+
         sent_scores = util.cos_sim(query_emb, sent_embeddings)[0]
 
-        top_sent_idx = torch.topk(sent_scores, k=min(top_sentences, len(sentences))).indices
+        top_sent_idx = torch.topk(sent_scores,
+                                  k=min(top_sentences, len(sentences))).indices
 
         top_sent_idx_sorted = sorted(top_sent_idx.tolist())
-        focus_context = " ".join([sentences[idx] for idx in top_sent_idx_sorted])
+        focus_context = " ".join(
+            [sentences[idx] for idx in top_sent_idx_sorted])
 
         return focus_context
 
 def generate_answer(tokenizer, model, focus_context, question):
-    prompt = f"""Ты — строгий научный ИИ. Твоя задача — отвечать на вопросы СТРОГО на основе фрагментов статьи.
+    prompt = f"""Ты — строгий научный ИИ.
+    Твоя задача — отвечать на вопросы СТРОГО на основе фрагментов статьи.
 
-ПОБУДИТЕЛЬНЫЕ ПРИМЕРЫ:[ПРИМЕР 1 - ПРАВИЛЬНЫЙ]
-Фрагмент: "Бактерия X погибает при температуре 80 градусов Цельсия."
-Вопрос: "При какой температуре выживает бактерия X?"
-Ответ: На основе текста, бактерия X погибает при температуре 80 градусов Цельсия, следовательно, она выживает при температуре менее 80 градусов.[ПРИМЕР 2 - ГАЛЛЮЦИНАЦИЯ (НЕПРАВИЛЬНЫЙ)]
-Фрагмент: "Проект марсохода оценивается в 2 миллиарда долларов."
-Вопрос: "Сколько марсоходов было запущено?"
-Плохой ответ: Было запущено 5 марсоходов. (ОШИБКА: Этой информации нет в тексте).
-Хороший ответ: В предоставленном тексте нет информации о количестве запущенных марсоходов.
+    ПОБУДИТЕЛЬНЫЕ ПРИМЕРЫ:
+    [ПРИМЕР 1 - ПРАВИЛЬНЫЙ]
+    Фрагмент: "Бактерия X погибает при температуре 80 градусов Цельсия."
+    Вопрос: "При какой температуре выживает бактерия X?"
 
-Теперь твоя очередь. Отвечай без тегов <think>.
-ФРАГМЕНТЫ СТАТЬИ:
-{focus_context}
+    Ответ: На основе текста, бактерия X погибает при температуре
+    80 градусов Цельсия, следовательно, она выживает при температуре
+    менее 80 градусов.
 
-ВОПРОС: {question}
-ОТВЕТ ПРЯМО СЕЙЧАС (БЕЗ <think>):"""
+    [ПРИМЕР 2 - ГАЛЛЮЦИНАЦИЯ (НЕПРАВИЛЬНЫЙ)]
+
+    Фрагмент: "Проект марсохода оценивается в 2 миллиарда долларов."
+    Вопрос: "Сколько марсоходов было запущено?"
+
+    Плохой ответ: Было запущено 5 марсоходов.
+    (ОШИБКА: Этой информации нет в тексте).
+
+    Хороший ответ: В предоставленном тексте нет информации
+    о количестве запущенных марсоходов.
+
+    Теперь твоя очередь. Отвечай без тегов <think>.
+    ФРАГМЕНТЫ СТАТЬИ:
+    {focus_context}
+
+    ВОПРОС: {question}
+    ОТВЕТ ПРЯМО СЕЙЧАС (БЕЗ <think>):"""
 
     inputs = tokenizer(prompt, return_tensors="pt").to(model.device)
 
@@ -117,16 +157,19 @@ def generate_answer(tokenizer, model, focus_context, question):
         outputs = model.generate(
             **inputs,
             max_new_tokens=512,
-            temperature=0.2,
+            temperature=0.1,
             do_sample=True,
             repetition_penalty=1.1,
             pad_token_id=tokenizer.eos_token_id
         )
 
     input_length = inputs['input_ids'].shape[1]
-    raw_response = tokenizer.decode(outputs[0][input_length:], skip_special_tokens=True)
+    raw_response = tokenizer.decode(
+        outputs[0][input_length:],
+        skip_special_tokens=True)
 
-    cleaned_response = re.sub(r'<think>.*?</think>', '', raw_response, flags=re.DOTALL)
+    cleaned_response = re.sub(
+        r'<think>.*?</think>', '', raw_response, flags=re.DOTALL)
     if '<think>' in cleaned_response:
         cleaned_response = cleaned_response.split('<think>')[0]
 
@@ -143,7 +186,8 @@ def main():
         with open(OUTPUT_FILE, 'r', encoding='utf-8') as f:
             try:
                 results = json.load(f)
-                processed_keys = {f"{r['article_id']}_{r['q_index']}" for r in results}
+                processed_keys = {f"{r['article_id']}_{r['q_index']}"
+                                  for r in results}
                 print(f"Восстановлено: {len(results)} ответов.")
             except json.JSONDecodeError:
                 pass
@@ -172,7 +216,8 @@ def main():
 
             focus_context = retriever.retrieve(expanded_query)
 
-            predicted_answer = generate_answer(tokenizer, local_model, focus_context, question)
+            predicted_answer = generate_answer(
+                tokenizer, local_model, focus_context, question)
 
             gen_time = time.time() - start_time
 
@@ -193,9 +238,6 @@ def main():
 if __name__ == "__main__":
     main()
 
-from google.colab import drive
-drive.mount('/content/drive')
-
 """## LLM As A Judge (Gemini 3.1 Flash-Lite, Gemini 3 Flash Preview, Gemini 2.5 Pro etc.)"""
 
 import os
@@ -204,16 +246,20 @@ import time
 from google import genai
 
 
-API_KEY = ""
-INPUT_FILE = f"/content/drive/MyDrive/llm_outputs/answers_{safe_model_name}_Enhanced_RAG.json"
-OUTPUT_FILE =f"/content/drive/MyDrive/llm_judged/judged_{safe_model_name}_Enhanced_RAG.json"
+API_KEY_GOOGLE = ""
 
+INPUT_FILE = "/content/drive/MyDrive/llm_outputs/" + \
+             f"answers_{safe_model_name}Enhanced_RAG_Temp_0_2.json"
 
-client = genai.Client(api_key=API_KEY)
+OUTPUT_FILE = "/content/drive/MyDrive/llm_judged/" + \
+              f"judged_{safe_model_name}Enhanced_RAG_Temp_0_2.json"
+
+client = genai.Client(api_key=API_KEY_GOOGLE)
 
 def evaluate_with_judge(question, ground_truth, predicted_answer):
     prompt = f"""
-    Ты — беспристрастный судья. Твоя задача — оценить ответ языковой модели на вопрос по научной статье.
+    Ты — беспристрастный судья.
+    Твоя задача — оценить ответ языковой модели на вопрос по научной статье.
 
     ВОПРОС: {question}
     ЭТАЛОННЫЙ ОТВЕТ: {ground_truth}
@@ -244,7 +290,11 @@ def evaluate_with_judge(question, ground_truth, predicted_answer):
               'top_k': 20,
               },
             )
-            clean_text = response.text.replace("```json", "").replace("```", "").replace("```JSON", "").strip()
+            clean_text = (response.text
+              .replace("```json", "")
+              .replace("```", "")
+              .replace("```JSON", "")
+              .strip())
 
             start_idx = clean_text.find('{')
             end_idx = clean_text.rfind('}')
@@ -283,7 +333,8 @@ def main():
         with open(OUTPUT_FILE, 'r', encoding='utf-8') as f:
             try:
                 judged_data = json.load(f)
-                processed_keys = {f"{r['article_id']}_{r['q_index']}" for r in judged_data}
+                processed_keys = {f"{r['article_id']}_{r['q_index']}"
+                                  for r in judged_data}
                 print(f"Восстановлено оценок: {len(judged_data)}")
             except json.JSONDecodeError:
                 print("Файл оценок поврежден.")
@@ -310,14 +361,16 @@ def main():
         item['judge_reason'] = eval_result.get('reason', 'N/A')
 
         judged_data.append(item)
-        print(f"Оценка: {item['judge_score']}/5 | Причина: {item['judge_reason'][:50]}...")
+        print(f"Оценка: {item['judge_score']}/5 |" + \
+              f"Причина: {item['judge_reason'][:50]}...")
 
         with open(OUTPUT_FILE, 'w', encoding='utf-8') as f:
             json.dump(judged_data, f, ensure_ascii=False, indent=2)
 
         time.sleep(4)
 
-    scores = [r['judge_score'] for r in judged_data if isinstance(r['judge_score'], (int, float))]
+    scores = [r['judge_score'] for r in judged_data
+              if isinstance(r['judge_score'], (int, float))]
     if scores:
         avg = sum(scores) / len(scores)
         print(f"\nВСЕ ОТВЕТЫ ОЦЕНЕНЫ! Средний балл модели: {avg:.2f} / 5.0")

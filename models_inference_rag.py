@@ -9,14 +9,17 @@ Original file is located at
 ## Получаем ответы от LLM
 """
 
-!pip install -U -q bitsandbytes transformers
+!pip install -U -q bitsandbytes transformers google
 
 DATASET_FILE = "/content/drive/MyDrive/dataset_SMALL.json"
-MODEL_ID = "meta-llama/Llama-3.2-3B-Instruct"
+MODEL_ID = "yandex/YandexGPT-5-Lite-8B-instruct"
 safe_model_name = MODEL_ID.replace("/", "_")
-OUTPUT_FILE = f"/content/drive/MyDrive/llm_outputs/answers_{safe_model_name}_RAG_Temp_0_2.json"
+OUTPUT_FILE = "/content/drive/MyDrive/llm_outputs/" + \
+              f"answers_{safe_model_name}_RAG_Temp_0_2.json"
 
 EMBEDDER_MODEL = "intfloat/multilingual-e5-small"
+
+CHUNKS_AMOUNT = 12
 
 import os
 import json
@@ -29,7 +32,7 @@ from sentence_transformers import SentenceTransformer, util
 
 
 def load_models(model_id):
-    print(f"Загрузка тестируемой LLM {model_id} в 4-bit...")
+    print(f"Загрузка тестируемой LLM {model_id}")
     quantization_config = BitsAndBytesConfig(
         load_in_4bit=True,
         bnb_4bit_compute_dtype=torch.float16,
@@ -41,9 +44,11 @@ def load_models(model_id):
     )
 
     print(f"Загрузка Embedding-модели {EMBEDDER_MODEL}...")
-    embedder = SentenceTransformer(EMBEDDER_MODEL, device="cuda" if torch.cuda.is_available() else "cpu")
+    embedder = SentenceTransformer(EMBEDDER_MODEL, device="cuda"
+                                   if torch.cuda.is_available() else "cpu")
 
     return tokenizer, llm, embedder
+
 
 class NoisyRetriever:
     def __init__(self, text, embedder):
@@ -52,7 +57,8 @@ class NoisyRetriever:
 
         chunk_size = 1000
         overlap = 200
-        self.chunks = [self.text[i : i + chunk_size] for i in range(0, len(self.text), chunk_size - overlap)]
+        self.chunks = [self.text[i : i + chunk_size]
+                       for i in range(0, len(self.text), chunk_size - overlap)]
 
         self.embeddings = self.embedder.encode(
             [f"passage: {c}" for c in self.chunks],
@@ -61,7 +67,9 @@ class NoisyRetriever:
         )
 
     def retrieve(self, query, top_k=25):
-        query_emb = self.embedder.encode(f"query: {query}", convert_to_tensor=True, show_progress_bar=False)
+        query_emb = self.embedder.encode(f"query: {query}",
+                                         convert_to_tensor=True,
+                                         show_progress_bar=False)
         cos_scores = util.cos_sim(query_emb, self.embeddings)[0]
 
         k = min(top_k, len(self.chunks))
@@ -76,17 +84,23 @@ class NoisyRetriever:
 
         return "\n\n".join(noisy_context_parts)
 
+
 def generate_answer(tokenizer, model, noisy_context, question):
-    prompt = f"""Ты — аналитик данных. Ниже приведены фрагменты из научной статьи, найденные поисковой системой.
-ВНИМАНИЕ: Поисковик работает плохо! 90% этих фрагментов — информационный шум и не относятся к сути дела. Фрагменты перемешаны и не имеют хронологического порядка.
+    prompt = f"""Ты — аналитик данных.
+    Ниже приведены фрагменты из научной статьи, найденные поисковой системой.
+    ВНИМАНИЕ: Поисковик работает плохо!
+    90% этих фрагментов — информационный шум и не относятся к сути дела.
+    Фрагменты перемешаны и не имеют хронологического порядка.
 
-Твоя задача: Внимательно изучить весь этот массив текста, найти правильную информацию и ответить на вопрос. Если ответа действительно нет ни в одном фрагменте, напиши, что его нет.
+    Твоя задача: Внимательно изучить весь этот массив текста,
+    найти правильную информацию и ответить на вопрос.
+    Если ответа действительно нет ни в одном фрагменте, напиши, что его нет.
 
-ФРАГМЕНТЫ СТАТЬИ:
-{noisy_context}
+    ФРАГМЕНТЫ СТАТЬИ:
+    {noisy_context}
 
-ВОПРОС: {question}
-ОТВЕТ ПРЯМО СЕЙЧАС (БЕЗ тегов <think>):"""
+    ВОПРОС: {question}
+    ОТВЕТ ПРЯМО СЕЙЧАС (БЕЗ тегов <think>):"""
 
     inputs = tokenizer(prompt, return_tensors="pt").to(model.device)
 
@@ -101,13 +115,16 @@ def generate_answer(tokenizer, model, noisy_context, question):
         )
 
     input_length = inputs['input_ids'].shape[1]
-    raw_response = tokenizer.decode(outputs[0][input_length:], skip_special_tokens=True)
+    raw_response = tokenizer.decode(
+        outputs[0][input_length:], skip_special_tokens=True)
 
-    cleaned_response = re.sub(r'<think>.*?</think>', '', raw_response, flags=re.DOTALL)
+    cleaned_response = re.sub(
+        r'<think>.*?</think>', '', raw_response, flags=re.DOTALL)
     if '<think>' in cleaned_response:
         cleaned_response = cleaned_response.split('<think>')[0]
 
     return cleaned_response.strip()
+
 
 def main():
     with open(DATASET_FILE, 'r', encoding='utf-8') as f:
@@ -120,7 +137,8 @@ def main():
         with open(OUTPUT_FILE, 'r', encoding='utf-8') as f:
             try:
                 results = json.load(f)
-                processed_keys = {f"{r['article_id']}_{r['q_index']}" for r in results}
+                processed_keys = {f"{r['article_id']}_{r['q_index']}"
+                                  for r in results}
                 print(f"Восстановлено: {len(results)} ответов.")
             except json.JSONDecodeError:
                 pass
@@ -145,9 +163,10 @@ def main():
             print(f"[{article_id} | Q{q_idx}] Поиск и тест LLM...")
             start_time = time.time()
 
-            noisy_context = retriever.retrieve(question, top_k=15)
+            noisy_context = retriever.retrieve(question, top_k=CHUNKS_AMOUNT)
 
-            predicted_answer = generate_answer(tokenizer, local_model, noisy_context, question)
+            predicted_answer = generate_answer(
+                tokenizer, local_model, noisy_context, question)
 
             gen_time = time.time() - start_time
 
@@ -165,11 +184,9 @@ def main():
 
     print(f"\n Тест завершен. Файл: {OUTPUT_FILE}")
 
+
 if __name__ == "__main__":
     main()
-
-from google.colab import drive
-drive.mount('/content/drive')
 
 """## LLM As A Judge (Gemini 3.1 Flash-Lite, Gemini 3 Flash Preview, Gemini 2.5 Pro etc.)"""
 
@@ -179,16 +196,20 @@ import time
 from google import genai
 
 
-API_KEY = ""
-INPUT_FILE = f"/content/drive/MyDrive/llm_outputs/answers_{safe_model_name}_RAG_Temp_0_2.json"
-OUTPUT_FILE =f"/content/drive/MyDrive/llm_judged/judged_{safe_model_name}_RAG_Temp_0_2.json"
+API_KEY_GOOGLE = ""
 
+INPUT_FILE = "/content/drive/MyDrive/llm_outputs/" + \
+             f"answers_{safe_model_name}_RAG_Temp_0_2.json"
 
-client = genai.Client(api_key=API_KEY)
+OUTPUT_FILE = "/content/drive/MyDrive/llm_judged/" + \
+              f"judged_{safe_model_name}_RAG_Temp_0_2.json"
+
+client = genai.Client(api_key=API_KEY_GOOGLE)
 
 def evaluate_with_judge(question, ground_truth, predicted_answer):
     prompt = f"""
-    Ты — беспристрастный судья. Твоя задача — оценить ответ языковой модели на вопрос по научной статье.
+    Ты — беспристрастный судья.
+    Твоя задача — оценить ответ языковой модели на вопрос по научной статье.
 
     ВОПРОС: {question}
     ЭТАЛОННЫЙ ОТВЕТ: {ground_truth}
@@ -219,7 +240,11 @@ def evaluate_with_judge(question, ground_truth, predicted_answer):
               'top_k': 20,
               },
             )
-            clean_text = response.text.replace("```json", "").replace("```", "").replace("```JSON", "").strip()
+            clean_text = (response.text
+              .replace("```json", "")
+              .replace("```", "")
+              .replace("```JSON", "")
+              .strip())
 
             start_idx = clean_text.find('{')
             end_idx = clean_text.rfind('}')
@@ -243,6 +268,7 @@ def evaluate_with_judge(question, ground_truth, predicted_answer):
                 print(f"Неизвестная ошибка API: {e}. Ждем 5 сек...")
                 time.sleep(5)
 
+
 def main():
     if not os.path.exists(INPUT_FILE):
         print(f"Файл {INPUT_FILE} не найден. Сначала запустите первый скрипт.")
@@ -258,7 +284,8 @@ def main():
         with open(OUTPUT_FILE, 'r', encoding='utf-8') as f:
             try:
                 judged_data = json.load(f)
-                processed_keys = {f"{r['article_id']}_{r['q_index']}" for r in judged_data}
+                processed_keys = {f"{r['article_id']}_{r['q_index']}"
+                                  for r in judged_data}
                 print(f"Восстановлено оценок: {len(judged_data)}")
             except json.JSONDecodeError:
                 print("Файл оценок поврежден.")
@@ -285,18 +312,21 @@ def main():
         item['judge_reason'] = eval_result.get('reason', 'N/A')
 
         judged_data.append(item)
-        print(f"Оценка: {item['judge_score']}/5 | Причина: {item['judge_reason'][:50]}...")
+        print(f"Оценка: {item['judge_score']}/5 |" + \
+              f"Причина: {item['judge_reason'][:50]}...")
 
         with open(OUTPUT_FILE, 'w', encoding='utf-8') as f:
             json.dump(judged_data, f, ensure_ascii=False, indent=2)
 
         time.sleep(4)
 
-    scores = [r['judge_score'] for r in judged_data if isinstance(r['judge_score'], (int, float))]
+    scores = [r['judge_score'] for r in judged_data
+              if isinstance(r['judge_score'], (int, float))]
     if scores:
         avg = sum(scores) / len(scores)
         print(f"\nВСЕ ОТВЕТЫ ОЦЕНЕНЫ! Средний балл модели: {avg:.2f} / 5.0")
     print(f"Файл с результатами: {OUTPUT_FILE}")
+
 
 if __name__ == "__main__":
     main()

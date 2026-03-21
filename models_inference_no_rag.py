@@ -9,7 +9,13 @@ Original file is located at
 ## Получаем ответы от LLM
 """
 
-!pip install -U -q bitsandbytes transformers
+!pip install -U -q bitsandbytes transformers google
+
+DATASET_FILE = "/content/drive/MyDrive/dataset_SMALL.json"
+MODEL_ID = "Qwen/Qwen3.5-4B"
+safe_model_name = MODEL_ID.replace("/", "_")
+OUTPUT_FILE = "/content/drive/MyDrive/llm_outputs/" + \
+              f"answers_{safe_model_name}_Temp_0_2.json"
 
 import os
 import json
@@ -18,13 +24,6 @@ import re
 import torch
 from transformers import AutoModelForCausalLM, AutoTokenizer, BitsAndBytesConfig
 
-# "Qwen/Qwen3.5-4B"
-
-DATASET_FILE = "/content/drive/MyDrive/dataset_FULL.json"
-MODEL_ID = "Qwen/Qwen3.5-4B"
-
-safe_model_name = MODEL_ID.replace("/", "_")
-OUTPUT_FILE = f"/content/drive/MyDrive/llm_outputs/answers_{safe_model_name}.json"
 
 def load_local_model(model_id):
     print(f"Загрузка модели {model_id} в 4-bit...")
@@ -41,14 +40,18 @@ def load_local_model(model_id):
 
 def generate_answer(tokenizer, model, context, question):
 
-    truncated_context = context[:15000]
+    truncated_context = context[:15000] # можно обрезать статью,
+                                        # если не помещается в контекст
 
-    prompt = f"""Ты — умный и лаконичный помощник. Опираясь на текст научной статьи, ответь на вопрос прямо и без размышлений вслух. Не используй теги <think>.
-ТЕКСТ:
-{truncated_context}
+    prompt = f"""Ты — умный и лаконичный помощник.
+    Опираясь на текст научной статьи,
+    ответь на вопрос прямо и без размышлений вслух.
+    Не используй теги <think>.
+    ТЕКСТ:
+    {truncated_context}
 
-ВОПРОС: {question}
-ОТВЕТ ПРЯМО СЕЙЧАС (БЕЗ <think>):"""
+    ВОПРОС: {question}
+    ОТВЕТ ПРЯМО СЕЙЧАС (БЕЗ <think>):"""
 
     inputs = tokenizer(prompt, return_tensors="pt").to(model.device)
 
@@ -63,9 +66,11 @@ def generate_answer(tokenizer, model, context, question):
         )
 
     input_length = inputs['input_ids'].shape[1]
-    raw_response = tokenizer.decode(outputs[0][input_length:], skip_special_tokens=True)
+    raw_response = tokenizer.decode(
+        outputs[0][input_length:], skip_special_tokens=True)
 
-    cleaned_response = re.sub(r'<think>.*?</think>', '', raw_response, flags=re.DOTALL)
+    cleaned_response = re.sub(
+        r'<think>.*?</think>', '', raw_response, flags=re.DOTALL)
 
     if '<think>' in cleaned_response:
         cleaned_response = cleaned_response.split('<think>')[0]
@@ -83,10 +88,12 @@ def main():
         with open(OUTPUT_FILE, 'r', encoding='utf-8') as f:
             try:
                 results = json.load(f)
-                processed_keys = {f"{r['article_id']}_{r['q_index']}" for r in results}
+                processed_keys = {f"{r['article_id']}_{r['q_index']}"
+                                  for r in results}
                 print(f"Восстановлено прогресса: {len(results)} ответов.")
             except json.JSONDecodeError:
-                print("Файл результатов поврежден, начинаем заново (или сделайте бэкап).")
+                print("Файл результатов поврежден, " + \
+                      "начинаем заново (или сделайте бэкап).")
 
     total_questions = sum(len(a['qas']) for a in dataset)
     if len(processed_keys) >= total_questions:
@@ -112,7 +119,8 @@ def main():
             print(f"[{article_id} | Q{q_idx}] Генерация...")
             start_time = time.time()
 
-            predicted_answer = generate_answer(tokenizer, local_model, context, question)
+            predicted_answer = generate_answer(
+                tokenizer, local_model, context, question)
 
             gen_time = time.time() - start_time
 
@@ -133,9 +141,6 @@ def main():
 if __name__ == "__main__":
     main()
 
-from google.colab import drive
-drive.mount('/content/drive')
-
 """## LLM As A Judge (Gemini 3.1 Flash-Lite, Gemini 3 Flash Preview, Gemini 2.5 Pro etc.)"""
 
 import os
@@ -144,16 +149,20 @@ import time
 from google import genai
 
 
-API_KEY = ""
-INPUT_FILE = "/content/drive/MyDrive/llm_outputs/answers_Qwen_Qwen3.5-4B.json"
-OUTPUT_FILE ="/content/drive/MyDrive/llm_judged/" + "judged_" + "Qwen_Qwen3.5-4B.json"
+API_KEY_GOOGLE = ""
 
+INPUT_FILE = "/content/drive/MyDrive/llm_outputs/" + \
+             f"answers_{safe_model_name}_RAG_Temp_0_2.json"
 
-client = genai.Client(api_key=API_KEY)
+OUTPUT_FILE = "/content/drive/MyDrive/llm_judged/" + \
+              f"judged_{safe_model_name}_RAG_Temp_0_2.json"
+
+client = genai.Client(api_key=API_KEY_GOOGLE)
 
 def evaluate_with_judge(question, ground_truth, predicted_answer):
     prompt = f"""
-    Ты — беспристрастный судья. Твоя задача — оценить ответ языковой модели на вопрос по научной статье.
+    Ты — беспристрастный судья.
+    Твоя задача — оценить ответ языковой модели на вопрос по научной статье.
 
     ВОПРОС: {question}
     ЭТАЛОННЫЙ ОТВЕТ: {ground_truth}
@@ -184,7 +193,11 @@ def evaluate_with_judge(question, ground_truth, predicted_answer):
               'top_k': 20,
               },
             )
-            clean_text = response.text.replace("```json", "").replace("```", "").replace("```JSON", "").strip()
+            clean_text = (response.text
+              .replace("```json", "")
+              .replace("```", "")
+              .replace("```JSON", "")
+              .strip())
 
             start_idx = clean_text.find('{')
             end_idx = clean_text.rfind('}')
@@ -223,7 +236,8 @@ def main():
         with open(OUTPUT_FILE, 'r', encoding='utf-8') as f:
             try:
                 judged_data = json.load(f)
-                processed_keys = {f"{r['article_id']}_{r['q_index']}" for r in judged_data}
+                processed_keys = {f"{r['article_id']}_{r['q_index']}"
+                                  for r in judged_data}
                 print(f"Восстановлено оценок: {len(judged_data)}")
             except json.JSONDecodeError:
                 print("Файл оценок поврежден.")
@@ -250,14 +264,16 @@ def main():
         item['judge_reason'] = eval_result.get('reason', 'N/A')
 
         judged_data.append(item)
-        print(f"Оценка: {item['judge_score']}/5 | Причина: {item['judge_reason'][:50]}...")
+        print(f"Оценка: {item['judge_score']}/5 |" + \
+              f"Причина: {item['judge_reason'][:50]}...")
 
         with open(OUTPUT_FILE, 'w', encoding='utf-8') as f:
             json.dump(judged_data, f, ensure_ascii=False, indent=2)
 
         time.sleep(4)
 
-    scores = [r['judge_score'] for r in judged_data if isinstance(r['judge_score'], (int, float))]
+    scores = [r['judge_score'] for r in judged_data
+              if isinstance(r['judge_score'], (int, float))]
     if scores:
         avg = sum(scores) / len(scores)
         print(f"\nВСЕ ОТВЕТЫ ОЦЕНЕНЫ! Средний балл модели: {avg:.2f} / 5.0")
