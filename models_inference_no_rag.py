@@ -38,6 +38,7 @@ def load_local_model(model_id):
     )
     return tokenizer, model
 
+
 def generate_answer(tokenizer, model, context, question):
 
     truncated_context = context[:15000] # можно обрезать статью,
@@ -76,6 +77,7 @@ def generate_answer(tokenizer, model, context, question):
         cleaned_response = cleaned_response.split('<think>')[0]
 
     return cleaned_response.strip()
+
 
 def main():
     with open(DATASET_FILE, 'r', encoding='utf-8') as f:
@@ -137,6 +139,7 @@ def main():
                 json.dump(results, f, ensure_ascii=False, indent=2)
 
     print(f"\nГенерация завершена. Файл: {OUTPUT_FILE}")
+
 
 if __name__ == "__main__":
     main()
@@ -221,6 +224,7 @@ def evaluate_with_judge(question, ground_truth, predicted_answer):
                 print(f"Неизвестная ошибка API: {e}. Ждем 5 сек...")
                 time.sleep(5)
 
+
 def main():
     if not os.path.exists(INPUT_FILE):
         print(f"Файл {INPUT_FILE} не найден. Сначала запустите первый скрипт.")
@@ -278,6 +282,7 @@ def main():
         avg = sum(scores) / len(scores)
         print(f"\nВСЕ ОТВЕТЫ ОЦЕНЕНЫ! Средний балл модели: {avg:.2f} / 5.0")
     print(f"Файл с результатами: {OUTPUT_FILE}")
+
 
 if __name__ == "__main__":
     main()

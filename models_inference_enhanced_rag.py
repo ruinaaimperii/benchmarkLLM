@@ -46,6 +46,7 @@ def load_models(model_id):
 
     return tokenizer, llm, embedder
 
+
 def expand_query(tokenizer, model, question):
 
     prompt = f"""
@@ -68,6 +69,7 @@ def expand_query(tokenizer, model, question):
 
     keywords = re.sub(r'<think>.*?</think>', '', raw, flags=re.DOTALL).strip()
     return f"{question} {keywords}"
+
 
 class FocusModeRetriever:
     def __init__(self, text, embedder):
@@ -119,6 +121,7 @@ class FocusModeRetriever:
             [sentences[idx] for idx in top_sent_idx_sorted])
 
         return focus_context
+
 
 def generate_answer(tokenizer, model, focus_context, question):
     prompt = f"""Ты — строгий научный ИИ.
@@ -174,6 +177,7 @@ def generate_answer(tokenizer, model, focus_context, question):
         cleaned_response = cleaned_response.split('<think>')[0]
 
     return cleaned_response.strip()
+
 
 def main():
     with open(DATASET_FILE, 'r', encoding='utf-8') as f:
@@ -234,6 +238,7 @@ def main():
                 json.dump(results, f, ensure_ascii=False, indent=2)
 
     print(f"\nГенерация завершена. Файл: {OUTPUT_FILE}")
+
 
 if __name__ == "__main__":
     main()
@@ -318,6 +323,7 @@ def evaluate_with_judge(question, ground_truth, predicted_answer):
                 print(f"Неизвестная ошибка API: {e}. Ждем 5 сек...")
                 time.sleep(5)
 
+
 def main():
     if not os.path.exists(INPUT_FILE):
         print(f"Файл {INPUT_FILE} не найден. Сначала запустите первый скрипт.")
@@ -375,6 +381,7 @@ def main():
         avg = sum(scores) / len(scores)
         print(f"\nВСЕ ОТВЕТЫ ОЦЕНЕНЫ! Средний балл модели: {avg:.2f} / 5.0")
     print(f"Файл с результатами: {OUTPUT_FILE}")
+
 
 if __name__ == "__main__":
     main()

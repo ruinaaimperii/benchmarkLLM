@@ -9,9 +9,6 @@ Original file is located at
 
 !pip install sickle requests beautifulsoup4 lxml
 
-from google.colab import drive
-drive.mount('/content/drive')
-
 import os
 import time
 import random
@@ -67,7 +64,8 @@ TARGET_TOPICS = {
         "philosop", "ethic", "religion",
         "метафиз", "логик", "феномен", "экзистен", "диалект",
         "сознан", "антропол", "истин", "познан",
-        "герменев", "эпистемол", "мировоззр", "гуманиз", "быти", "нравств", "культур",
+        "герменев", "эпистемол", "мировоззр", "гуманиз", "быти",
+        "нравств", "культур",
         "metaphys", "logic", "phenomen", "exist", "social",
         "epistemo", "human", "culture", "dialect", "reason"
     ],
@@ -86,13 +84,16 @@ TARGET_TOPICS = {
 
 def get_robust_session():
     session = requests.Session()
-    retry = Retry(total=3, backoff_factor=2, status_forcelist=[500, 502, 503, 504])
+    retry = Retry(total=3,
+                  backoff_factor=2,
+                  status_forcelist=[500, 502, 503, 504])
     adapter = HTTPAdapter(max_retries=retry)
     session.mount('http://', adapter)
     session.mount('https://', adapter)
     session.headers.update({
         'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
     })
+
     return session
 
 
@@ -168,6 +169,7 @@ def check_topic(keywords_text, current_counts):
                 return topic
     return None
 
+
 def main():
     session = get_robust_session()
     sickle = Sickle(OAI_URL)
@@ -238,6 +240,7 @@ def main():
             status = " | ".join([f"{k}:{v}" for k, v in counts.items()])
             print(f"\n--- Скан: {scanned_count}. Статус: [{status}] ---")
 
+
 if __name__ == "__main__":
     main()
 
@@ -284,6 +287,7 @@ def convert_pdfs():
 
                 except Exception as e:
                     print(f"Ошибка: {e}")
+
 
 if __name__ == "__main__":
     convert_pdfs()

@@ -13,22 +13,26 @@ import time
 import glob
 from google import genai
 
-API_KEY = ""
+
+API_KEY_GOOGLE = ""
 
 INPUT_DIR = '/content/drive/MyDrive/articles_dump/'
 OUTPUT_FILE = '/content/drive/MyDrive/dataset_benchLLM_7.json'
 
-client = genai.Client(api_key=API_KEY)
+client = genai.Client(api_key=API_KEY_GOOGLE)
 
 def generate_questions(text, topic):
     prompt = f"""
     Ты - эксперт по оценке знаний в области "{topic}".
-    Твоя задача - прочитать научную статью и составить 4 вопроса по её содержанию.
+    Твоя задача - прочитать научную статью и составить
+    4 вопроса по её содержанию.
 
     Требования:
     1. Вопросы должны быть разной сложности.
-    2. Вопросы должны решаться ИСКЛЮЧИТЕЛЬНО на основе текста статьи. Не используй внешние знания.
-    3. Для каждого вопроса напиши эталонный ответ (ground_truth), который содержится в тексте.
+    2. Вопросы должны решаться ИСКЛЮЧИТЕЛЬНО на основе текста статьи.
+    Не используй внешние знания.
+    3. Для каждого вопроса напиши эталонный ответ (ground_truth),
+    который содержится в тексте.
 
     Верни результат СТРОГО в формате JSON:
     [
@@ -80,6 +84,7 @@ def generate_questions(text, topic):
         print(f"Ошибка API: {e}")
         return None
 
+
 def main():
     dataset = []
 
@@ -93,7 +98,8 @@ def main():
         topic = os.path.basename(os.path.dirname(file_path))
         filename = os.path.basename(file_path)
 
-        print(f"[{i+1}/{len(md_files)}] Обработка: {filename} ({topic})...", end=" ")
+        print(f"[{i+1}/{len(md_files)}]" + \
+              "Обработка: {filename} ({topic})...", end=" ")
 
         try:
             with open(file_path, 'r', encoding='utf-8') as f:
@@ -123,7 +129,7 @@ def main():
             if (i+1) % 10 == 0:
                 with open(OUTPUT_FILE, 'w', encoding='utf-8') as f:
                     json.dump(dataset, f, ensure_ascii=False, indent=2)
-                    print(f"--- Промежуточное сохранение ({len(dataset)} записей) ---")
+                    print(f"Промежуточное сохранение ({len(dataset)} записей)")
 
         except Exception as e:
             print(f"ERROR: {e}")
@@ -133,6 +139,6 @@ def main():
 
     print(f"\nДатасет сохранен в {OUTPUT_FILE}")
 
+
 if __name__ == "__main__":
     main()
-

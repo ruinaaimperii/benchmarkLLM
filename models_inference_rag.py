@@ -66,6 +66,7 @@ class NoisyRetriever:
             show_progress_bar=False
         )
 
+
     def retrieve(self, query, top_k=25):
         query_emb = self.embedder.encode(f"query: {query}",
                                          convert_to_tensor=True,
